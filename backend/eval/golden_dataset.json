@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "description": "Golden Q/A pairs over the seeded demo course materials. Used by Ragas in CI.",
+  "samples": [
+    {
+      "id": "ml_backprop_definition",
+      "question": "What does backpropagation compute, and why is it efficient?",
+      "ground_truth": "Backpropagation computes the gradient of the loss with respect to every parameter of a neural network by applying the chain rule in reverse from the output. It is efficient because it reuses intermediate activations from the forward pass, so the cost is on the same order as the forward pass itself.",
+      "course_code": "CS480"
+    },
+    {
+      "id": "ml_overfitting_signs",
+      "question": "What are the classic signs of overfitting?",
+      "ground_truth": "Training loss continues to decrease while validation/test loss starts to rise; the model memorises training noise; performance gap between train and held-out data widens.",
+      "course_code": "CS480"
+    },
+    {
+      "id": "db_normalization_3nf",
+      "question": "When is a relation in third normal form?",
+      "ground_truth": "A relation is in 3NF when it is in 2NF and every non-prime attribute is non-transitively dependent on every candidate key — equivalently, no non-prime attribute depends on another non-prime attribute.",
+      "course_code": "CS348"
+    },
+    {
+      "id": "db_acid_definition",
+      "question": "What does ACID stand for in transaction processing?",
+      "ground_truth": "Atomicity, Consistency, Isolation, Durability. Atomicity: all-or-nothing. Consistency: invariants preserved. Isolation: concurrent transactions appear serial. Durability: committed changes survive failure.",
+      "course_code": "CS348"
+    },
+    {
+      "id": "out_of_scope_handling",
+      "question": "What are the rules of cricket?",
+      "ground_truth": "The course materials do not cover cricket; the assistant should say it cannot find an answer in the indexed documents rather than fabricating one.",
+      "course_code": null
+    }
+  ]
+}

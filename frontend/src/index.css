@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { font-feature-settings: "cv11", "ss01"; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium
+           transition-colors focus-visible:outline-none focus-visible:ring-2
+           focus-visible:ring-accent disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-accent-fg hover:bg-accent/90;
+  }
+  .btn-ghost {
+    @apply btn text-ink-700 hover:bg-ink-100;
+  }
+  .card {
+    @apply rounded-xl border border-ink-200 bg-white shadow-sm;
+  }
+}
+
+/* Markdown / KaTeX-ish typography */
+.prose-answer {
+  @apply leading-relaxed;
+}
+.prose-answer p { @apply my-2; }
+.prose-answer ul { @apply list-disc pl-5 my-2; }
+.prose-answer ol { @apply list-decimal pl-5 my-2; }
+.prose-answer code {
+  @apply rounded bg-ink-100 px-1 py-0.5 text-[0.85em] font-mono;
+}
+.prose-answer pre {
+  @apply rounded-lg bg-ink-900 text-ink-50 p-3 overflow-x-auto my-3 text-xs;
+}
+.prose-answer pre code {
+  @apply bg-transparent p-0 text-ink-50;
+}
