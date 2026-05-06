@@ -163,15 +163,6 @@ fly secrets set OPENAI_API_KEY=...
 fly deploy
 ```
 
-## What's intentionally out of scope
-
-A portfolio project earns more credibility by being honest about its boundaries than by sprawling. Things deliberately not built (and the answer for the interview "what would you add next?" question):
-
-- **Auth + multi-tenancy** — the schema includes `user_id`, but JWT/Clerk integration is left as a one-evening add-on.
-- **Background workers** — ingestion uses FastAPI `BackgroundTasks`; for production, swap in [Arq](https://arq-docs.helpmanual.io/) (Redis-backed, async-native) or Celery.
-- **Multimodal RAG** — PDF text only; figure/table extraction with [Unstructured](https://unstructured.io/) or [Docling](https://github.com/DS4SD/docling) is a clean future extension.
-- **Agentic flows** — single-shot retrieve-then-generate. LangGraph 1.0 is wired up at the prompt-template layer to make a multi-step ReAct upgrade additive.
-
 ## License
 
 MIT.
