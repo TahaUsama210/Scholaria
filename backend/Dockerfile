@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml ./
+COPY backend/pyproject.toml ./
 RUN pip install --prefix=/install ".[eval]"
 
 # --- runtime ---
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /install /install
 WORKDIR /app
-COPY . .
+COPY backend/ ./
 
 RUN chown -R app:app /app
 USER app
