@@ -1,0 +1,83 @@
+name: Load test
+
+# k6 against the production image on the offline profile (fake LLM, hash embedder), so the
+# numbers describe the platform (HTTP, hybrid retrieval, SSE), not an external LLM.
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      chat_vus:
+        description: Concurrent chat users at steady state
+        default: "10"
+      browse_rps:
+        description: Document-list + healthz iterations per second
+        default: "20"
+      steady_s:
+        description: Steady-state duration in seconds
+        default: "120"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  COMPOSE_PROJECT_NAME: scholaria-loadtest
+  SCHOLARIA_ENV_FILE: ops/env/offline.env
+  COMPOSE_FILES: -f docker-compose.yml -f docker-compose.prod.yml
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build production image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: scholaria:local
+          cache-from: type=gha,scope=scholaria
+      - name: Start stack
+        run: |
+          # shellcheck disable=SC2086
+          docker compose $COMPOSE_FILES up -d --no-build --wait
+      - name: Seed demo corpus
+        run: |
+          # shellcheck disable=SC2086
+          docker compose $COMPOSE_FILES exec -T backend python -m scripts.seed_demo_docs
+      - name: k6 smoke + load
+        env:
+          CHAT_VUS: ${{ inputs.chat_vus || '10' }}
+          BROWSE_RPS: ${{ inputs.browse_rps || '20' }}
+          STEADY_S: ${{ inputs.steady_s || '120' }}
+        run: |
+          mkdir -p loadtest/results && chmod 777 loadtest/results
+          run_k6() {
+            # shellcheck disable=SC2086
+            docker compose $COMPOSE_FILES --profile loadtest run --rm -e RESULTS_DIR=/results \
+              -e CHAT_VUS -e BROWSE_RPS -e STEADY_S k6 run -q "/scripts/$1.js" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          run_k6 smoke
+          run_k6 load
+      - name: API logs on failure
+        if: ${{ failure() }}
+        run: |
+          # shellcheck disable=SC2086
+          docker compose $COMPOSE_FILES logs --tail 200 backend
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: k6-results
+          path: loadtest/results/*.json
+          if-no-files-found: ignore
+      - name: Stop stack
+        if: ${{ always() }}
+        run: |
+          # shellcheck disable=SC2086
+          docker compose $COMPOSE_FILES --profile loadtest down -v

@@ -4,159 +4,351 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  PYTHON_VERSION: "3.12"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
+  # Keep in sync with the Dockerfile (TORCH_VERSION) and .pre-commit-config.yaml (ruff, mypy).
+  TORCH_VERSION: "2.15.0"
+  RUFF_VERSION: "0.17.3"
+  MYPY_VERSION: "2.4.1"
+  FORCE_COLOR: "1"
 
 jobs:
   backend:
-    name: backend (lint + type + test)
+    name: backend (lint, types, tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: scholaria
           POSTGRES_PASSWORD: scholaria
-          POSTGRES_DB: scholaria
+          POSTGRES_DB: scholaria_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
+          --health-cmd "pg_isready -U scholaria -d scholaria_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@localhost:5432/scholaria
-      DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@localhost:5432/scholaria
-      OPENAI_API_KEY: sk-test
-      EMBEDDING_PROVIDER: openai
-      EMBEDDING_DIM: "1536"
-
+      DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@localhost:5432/scholaria_test
+      DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@localhost:5432/scholaria_test
+      # Offline profile: no API keys, no model downloads.
+      LLM_PROVIDER: fake
+      EMBEDDING_PROVIDER: hash
+      EMBEDDING_DIM: "256"
+      RERANKER_PROVIDER: none
+    defaults:
+      run:
+        working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-backend
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-
-      - name: Install
-        working-directory: backend
-        run: |
-          pip install --upgrade pip
-          pip install ".[dev]"
-
-      - name: Lint (ruff)
-        working-directory: backend
-        run: ruff check . && ruff format --check .
-
-      - name: Type check (mypy)
-        working-directory: backend
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Mypy (strict)
         run: mypy app
 
-      - name: Migrate
-        working-directory: backend
-        run: alembic upgrade head
+      - name: Migrations (upgrade, downgrade, upgrade)
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
 
-      - name: Test (pytest)
-        working-directory: backend
-        run: pytest -q --cov=app --cov-report=term-missing
+      - name: Pytest
+        run: pytest --cov=app --cov-report=term-missing --cov-report=xml --junitxml=pytest.xml
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          { echo "### Backend coverage"; coverage report --format=markdown; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: backend-test-results
+          path: |
+            backend/coverage.xml
+            backend/pytest.xml
+          if-no-files-found: ignore
 
   frontend:
-    name: frontend (lint + type + test + build)
+    name: frontend (lint, types, tests, build)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
 
-      - name: Install
-        working-directory: frontend
-        run: npm ci || npm install
-
-      - name: Lint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Typecheck
-        working-directory: frontend
-        run: npm run typecheck
-
-      - name: Test
-        working-directory: frontend
-        run: npm test -- --run
-
-      - name: Build
-        working-directory: frontend
-        run: npm run build
-
-  eval:
-    name: rag eval (faithfulness gate)
+  ops:
+    name: ops (workflows, compose, alert rules)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+      - name: Compose files resolve
+        run: |
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            -f docker-compose.obs.yml --profile obs --profile loadtest config -q
+      - name: Prometheus config and SLO rule unit tests
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/ops/prometheus:/etc/prometheus:ro" \
+            -w /etc/prometheus prom/prometheus:v3.5.0 check config prometheus.yml
+          docker run --rm --entrypoint promtool -v "$PWD/ops/prometheus:/etc/prometheus:ro" \
+            -w /etc/prometheus/tests prom/prometheus:v3.5.0 test rules slo_test.yml
+      - name: Grafana dashboard is valid JSON
+        run: python3 -m json.tool ops/grafana/dashboards/scholaria.json > /dev/null
+
+  retrieval-eval:
+    name: eval (retrieval gate)
     needs: backend
-    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: scholaria
           POSTGRES_PASSWORD: scholaria
-          POSTGRES_DB: scholaria
+          POSTGRES_DB: scholaria_eval
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd "pg_isready -U scholaria -d scholaria_eval"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@localhost:5432/scholaria
-      DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@localhost:5432/scholaria
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
+      DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@localhost:5432/scholaria_eval
+      DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@localhost:5432/scholaria_eval
+      # Free "real" profile: local embedder + cross-encoder, no API keys.
+      EMBEDDING_PROVIDER: local
+      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDING_DIM: "384"
+      RERANKER_PROVIDER: local
+      RERANKER_MODEL: cross-encoder/ms-marco-MiniLM-L-6-v2
+      LLM_PROVIDER: fake
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LOG_LEVEL: WARNING
+    defaults:
+      run:
+        working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-backend
+      - name: Cache Hugging Face models
+        uses: actions/cache@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-
-      - name: Skip if no API key
-        if: ${{ env.OPENAI_API_KEY == '' }}
-        run: |
-          echo "::warning::OPENAI_API_KEY secret not set — skipping eval gate."
-          echo "SKIP_EVAL=1" >> $GITHUB_ENV
-
-      - name: Install
-        if: ${{ env.SKIP_EVAL != '1' }}
-        working-directory: backend
-        run: pip install ".[dev,eval]"
-
-      - name: Migrate + seed
-        if: ${{ env.SKIP_EVAL != '1' }}
-        working-directory: backend
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ env.EMBEDDING_MODEL }}-${{ env.RERANKER_MODEL }}
+      - name: Migrate and seed the demo corpus
         run: |
           alembic upgrade head
           python -m scripts.seed_demo_docs
-
-      - name: Run Ragas eval gate
-        if: ${{ env.SKIP_EVAL != '1' }}
-        working-directory: backend
-        run: python -m eval.run_eval
-
-      - name: Upload results
-        if: ${{ env.SKIP_EVAL != '1' && always() }}
-        uses: actions/upload-artifact@v4
+      - name: Retrieval eval
+        run: python -m eval.retrieval_eval
+      - name: Publish report
+        if: ${{ !cancelled() }}
+        run: cat eval_results/retrieval.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
-          name: eval-results
+          name: eval-retrieval
           path: backend/eval_results/
+          if-no-files-found: ignore
+
+  generation-eval:
+    name: eval (generation)
+    needs: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: scholaria
+          POSTGRES_PASSWORD: scholaria
+          POSTGRES_DB: scholaria_eval
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scholaria -d scholaria_eval"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@localhost:5432/scholaria_eval
+      DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@localhost:5432/scholaria_eval
+      # Same profile as retrieval-eval. Free "real" profile: local embedder + cross-encoder, no API keys.
+      EMBEDDING_PROVIDER: local
+      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDING_DIM: "384"
+      RERANKER_PROVIDER: local
+      RERANKER_MODEL: cross-encoder/ms-marco-MiniLM-L-6-v2
+      LLM_PROVIDER: fake
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LOG_LEVEL: WARNING
+      # Below this cross-encoder score the pipeline refuses instead of answering; selects the
+      # "fake-llm-local-minilm-refusal" profile in eval/thresholds.json (gates refusal_accuracy).
+      RERANK_MIN_SCORE: "-9"
+      # The judge step runs only when this secret exists (never on fork PRs).
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-backend
+      - name: Cache Hugging Face models
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ env.EMBEDDING_MODEL }}-${{ env.RERANKER_MODEL }}
+      - name: Migrate and seed the demo corpus
+        run: |
+          alembic upgrade head
+          python -m scripts.seed_demo_docs
+      - name: Generation eval (deterministic, fake LLM)
+        env:
+          LLM_PROVIDER: fake
+        run: python -m eval.generation_eval --out eval_results/fake
+      - name: Generation eval with LLM judge
+        if: ${{ env.LLM_API_KEY != '' }}
+        env:
+          LLM_PROVIDER: openai
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.groq.com/openai/v1' }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'llama-3.1-8b-instant' }}
+          EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
+        run: python -m eval.generation_eval --out eval_results/judged
+      - name: Publish report
+        if: ${{ !cancelled() }}
+        run: |
+          for f in eval_results/fake/generation.md eval_results/judged/generation.md; do
+            [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "LLM judge skipped: no LLM_API_KEY secret." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: eval-generation
+          path: backend/eval_results/
+          if-no-files-found: ignore
+
+  e2e:
+    name: e2e (Playwright)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: scholaria
+          POSTGRES_PASSWORD: scholaria
+          POSTGRES_DB: scholaria_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scholaria -d scholaria_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Read by frontend/playwright.config.ts, which starts the API (offline profile, rate
+      # limiting off) and Vite itself.
+      E2E_DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@localhost:5432/scholaria_e2e
+      E2E_DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@localhost:5432/scholaria_e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-backend
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install Chromium
+        working-directory: frontend
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+      - name: Playwright
+        working-directory: frontend
+        run: npm run test:e2e -- --project=chromium
+      - uses: actions/upload-artifact@v7
+        if: ${{ failure() }}
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+
+  docker:
+    name: docker (build, smoke test, scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build production image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: scholaria:ci
+          cache-from: type=gha,scope=scholaria
+          cache-to: type=gha,mode=max,scope=scholaria
+      - name: Smoke test (offline profile)
+        run: bash ops/ci/smoke_image.sh scholaria:ci
+      - name: Image size
+        run: |
+          docker image inspect scholaria:ci -f '{{.Size}}' \
+            | awk '{printf "Production image: %.0f MB (docker image inspect)\n", $1/1e6}' >> "$GITHUB_STEP_SUMMARY"
+      - name: Trivy scan (report only)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: scholaria:ci
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy.txt
+          exit-code: "0"
+      - name: Publish scan
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "### Trivy: fixable CRITICAL/HIGH vulnerabilities"
+            echo '```'
+            cat trivy.txt 2>/dev/null || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -12,6 +12,7 @@ eggs/
 .eggs/
 lib/
 !frontend/src/lib/
+!loadtest/k6/lib/
 lib64/
 parts/
 sdist/
@@ -23,6 +24,8 @@ wheels/
 .venv/
 venv/
 env/
+# ops/env holds the committed, secret-free offline profile used by `make stack`.
+!ops/env/
 .env
 .env.local
 .env.*.local
@@ -60,7 +63,9 @@ Thumbs.db
 uploads/
 *.pdf
 !backend/eval/fixtures/*.pdf
-!scripts/demo_docs/*.pdf
+# Demo PDFs are rendered deterministically from backend/scripts/corpus/*.md
+# (python -m scripts.seed_demo_docs --pdf-only), so only the Markdown is tracked.
+backend/scripts/demo_docs/
 
 # Models cache
 .cache/
@@ -68,4 +73,3 @@ uploads/
 
 # Eval artifacts
 eval_results/
-ragas_results/

@@ -1,43 +1,90 @@
-# fly.toml app configuration file generated for scholaria on 2026-05-07T03:43:28Z
+# Fly.io: single-image deploy (FastAPI API + built SPA from the root Dockerfile).
+# Reference: https://fly.io/docs/reference/configuration/
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# One-time setup (Postgres with pgvector, e.g. Fly Managed Postgres or Supabase/Neon):
+#   fly secrets set DATABASE_URL=postgresql+asyncpg://... DATABASE_URL_SYNC=postgresql+psycopg://...
+#   fly secrets set LLM_API_KEY=...            # key for LLM_BASE_URL below
+# Seed the demo corpus after the first deploy:
+#   fly ssh console -C "python -m scripts.seed_demo_docs"
 
 app = 'scholaria'
 primary_region = 'yyz'
 kill_signal = 'SIGINT'
-kill_timeout = '10s'
+kill_timeout = '15s'
 
 [build]
-  dockerfile = 'backend/Dockerfile'
+  dockerfile = 'Dockerfile'
 
 [deploy]
+  # Runs once per deploy in a temporary machine, before any app machine is replaced.
   release_command = 'alembic upgrade head'
+  strategy = 'rolling'
 
 [env]
-  EMBEDDING_DIM = '1536'
-  EMBEDDING_PROVIDER = 'openai'
+  PORT = '8000'
   ENVIRONMENT = 'production'
   LOG_LEVEL = 'INFO'
+  # Requests arrive through fly-proxy. Trusting forwarded headers gives the app the
+  # real scheme; rate limits key on Fly-Client-IP, which fly-proxy sets itself, never
+  # on X-Forwarded-For (its leftmost entry is whatever the client sent).
+  FORWARDED_ALLOW_IPS = '*'
+  CLIENT_IP_HEADER = 'Fly-Client-IP'
+  # Serve Prometheus metrics on a private port (scraped over Fly's 6PN by [metrics]
+  # below); the public app answers 404 on /metrics.
+  METRICS_PORT = '9091'
+  METRICS_HOST = '::'
+  CORS_ORIGINS = 'https://scholaria.fly.dev'
+  # Free "real" profile: both models are baked into the image (no Hub download on cold start).
+  # EMBEDDING_DIM is fixed into the schema by the first migration; changing the embedder
+  # later needs a fresh schema and a re-ingest.
+  EMBEDDING_PROVIDER = 'local'
+  EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
+  EMBEDDING_DIM = '384'
+  # MiniLM embeds only the first 256 word pieces of each 512-token chunk; the eval
+  # measured 512 as better for the reranked pipeline anyway (MRR@10 0.950 vs 0.926).
+  CHUNK_SIZE_TOKENS = '512'
   RERANKER_PROVIDER = 'local'
+  # Below this cross-encoder score the app refuses rather than answer from weak context.
+  RERANK_MIN_SCORE = '-9'
+  # Any OpenAI-compatible endpoint (Groq shown; check the provider's current model list).
+  LLM_PROVIDER = 'openai'
+  LLM_BASE_URL = 'https://api.groq.com/openai/v1'
+  LLM_MODEL = 'llama-3.1-8b-instant'
 
 [http_service]
-  internal_port = 8080
+  internal_port = 8000
   force_https = true
+  # Scale to zero when idle. Caveat: ingestion runs as an in-process background task,
+  # so a machine stopped mid-ingest leaves that document 'processing' until it is
+  # re-uploaded (after INGEST_STALE_AFTER_SECONDS). Set min_machines_running = 1 if
+  # uploads are frequent.
   auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
   processes = ['app']
 
+  [http_service.concurrency]
+    # SSE answers hold a request open for the whole generation.
+    type = 'requests'
+    soft_limit = 20
+    hard_limit = 40
+
+  # Liveness only: a DB outage should surface as 503s from /readyz and the API,
+  # not as fly-proxy pulling every machine out of rotation.
   [[http_service.checks]]
     interval = '30s'
     timeout = '5s'
-    grace_period = '10s'
+    grace_period = '30s'
     method = 'GET'
     path = '/healthz'
 
+# Fly's managed Prometheus scrapes the private metrics port (contract metrics, see ops/grafana).
+[metrics]
+  port = 9091
+  path = '/metrics'
+
+# The API with both local models loaded measured 788 MiB RSS; 1 GB leaves too little
+# headroom for concurrent cross-encoder batches.
 [[vm]]
   size = 'shared-cpu-1x'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 1024
+  memory = '2gb'

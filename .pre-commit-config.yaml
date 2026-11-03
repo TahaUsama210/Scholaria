@@ -1,38 +1,42 @@
+# pre-commit install   (run from an activated backend/.venv so the mypy hook sees app deps)
+# Versions match CI (.github/workflows/ci.yml: RUFF_VERSION, MYPY_VERSION); bump them together.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # docker-compose overrides use compose's !reset tag; check syntax only.
+        args: [--unsafe]
+      - id: check-toml
       - id: check-added-large-files
         args: ["--maxkb=1024"]
       - id: check-merge-conflict
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.17.3
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
         files: ^backend/
       - id: ruff-format
         files: ^backend/
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
-      - id: mypy
-        files: ^backend/app/
-        additional_dependencies:
-          - pydantic>=2
-          - sqlalchemy>=2
-
   - repo: local
     hooks:
+      # mypy --strict needs the app's real dependencies, so it runs from the project venv
+      # (pip install -e "backend[dev]" installs mypy at the CI-pinned version).
+      - id: mypy
+        name: mypy (backend/app, strict)
+        entry: bash -c 'cd backend && mypy app'
+        language: system
+        files: ^backend/app/.*\.py$
+        pass_filenames: false
       - id: eslint
         name: eslint
-        entry: bash -c 'cd frontend && npx eslint --max-warnings=0'
+        entry: bash -c 'cd frontend && npm run lint'
         language: system
-        files: ^frontend/src/.*\.(ts|tsx)$
+        files: ^frontend/.*\.(ts|tsx)$
         pass_filenames: false

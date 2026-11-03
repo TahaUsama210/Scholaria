@@ -1,0 +1,42 @@
+# Production image overlay: the same single image that is deployed to Fly (API + built SPA,
+# non-root, models baked in). Migrations run as a one-shot service before the API starts,
+# mirroring Fly's release_command. The Vite dev server is not started.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build   (make prod)
+x-prod-build: &prod-build
+  context: .
+  dockerfile: Dockerfile
+  target: runtime
+
+services:
+  migrate:
+    build: *prod-build
+    image: scholaria:local
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - path: ${SCHOLARIA_ENV_FILE:-.env}
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://scholaria:scholaria@db:5432/scholaria
+      DATABASE_URL_SYNC: postgresql+psycopg://scholaria:scholaria@db:5432/scholaria
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: *prod-build
+    image: scholaria:local
+    command: !reset null
+    volumes: !reset []
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      HF_HOME: /opt/hf
+      TIKTOKEN_CACHE_DIR: /opt/tiktoken
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      start_period: 90s
+
+  frontend:
+    profiles: [dev]
