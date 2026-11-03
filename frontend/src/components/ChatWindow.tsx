@@ -1,113 +1,191 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Send, Square } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { ArrowDown, Filter, SquarePen } from "lucide-react";
 
-import { useChat } from "@/hooks/useChat";
+import { useAutoScroll } from "@/hooks/useAutoScroll";
+import { useChat, type ChatMessage } from "@/hooks/useChat";
+import { BREAKPOINTS, useMediaQuery } from "@/hooks/useMediaQuery";
+import { Composer } from "./Composer";
+import { EmptyState } from "./EmptyState";
 import { MessageBubble } from "./MessageBubble";
-import { CitationCard } from "./CitationCard";
+import { SourcesPanel } from "./SourcesPanel";
 
-export function ChatWindow({ courseCode }: { courseCode?: string | null }) {
-  const { messages, isStreaming, ask, stop } = useChat();
-  const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [messages]);
-
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    void ask(input, courseCode);
-    setInput("");
-  };
-
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const citationRail = lastAssistant?.context ?? lastAssistant?.citations ?? [];
-  const cited = new Set(lastAssistant?.citations.map((c) => c.marker) ?? []);
-
-  return (
-    <div className="flex h-full flex-col gap-4 lg:flex-row">
-      {/* Conversation */}
-      <div className="flex flex-1 flex-col card overflow-hidden">
-        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
-          {messages.length === 0 ? (
-            <Empty />
-          ) : (
-            messages.map((m) => <MessageBubble key={m.id} message={m} />)
-          )}
-        </div>
-        <form
-          onSubmit={onSubmit}
-          className="flex items-center gap-2 border-t border-ink-200 bg-ink-50 p-3"
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about your course materials…"
-            className="flex-1 rounded-md border border-ink-200 bg-white px-3 py-2 text-sm
-                       placeholder:text-ink-400 focus-visible:outline-none
-                       focus-visible:ring-2 focus-visible:ring-accent"
-            disabled={isStreaming}
-          />
-          {isStreaming ? (
-            <button type="button" className="btn-ghost" onClick={stop}>
-              <Square className="mr-1 h-4 w-4" />
-              Stop
-            </button>
-          ) : (
-            <button type="submit" className="btn-primary" disabled={!input.trim()}>
-              <Send className="mr-1 h-4 w-4" />
-              Send
-            </button>
-          )}
-        </form>
-      </div>
-
-      {/* Citation rail */}
-      <aside className="lg:w-80 shrink-0 space-y-2 overflow-y-auto">
-        <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-500">
-          Sources
-        </h2>
-        {citationRail.length === 0 ? (
-          <p className="px-1 text-xs text-ink-400">
-            Sources used by the model will appear here once you ask a question.
-          </p>
-        ) : (
-          citationRail.map((c) => (
-            <CitationCard key={c.chunk_id} citation={c} highlighted={cited.has(c.marker)} />
-          ))
-        )}
-      </aside>
-    </div>
-  );
+interface Props {
+  courseCode: string | null;
+  libraryEmpty: boolean;
+  onRequestUpload(): void;
 }
 
-function Empty() {
-  const examples = [
-    "Explain backpropagation with the chain rule.",
-    "What's the difference between 2NF and 3NF?",
-    "Summarise the bias–variance tradeoff.",
-  ];
+interface ActiveSource {
+  messageId: string;
+  marker: number;
+  nonce: number;
+}
+
+function lastAssistant(messages: readonly ChatMessage[]): ChatMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m?.role === "assistant") return m;
+  }
+  return undefined;
+}
+
+function statusAnnouncement(message: ChatMessage | undefined): string {
+  switch (message?.status) {
+    case "streaming":
+      return "Generating answer…";
+    case "done":
+      return "Answer ready.";
+    case "stopped":
+      return "Generation stopped.";
+    default:
+      return ""; // errors are announced by the alert itself
+  }
+}
+
+export function ChatWindow({ courseCode, libraryEmpty, onRequestUpload }: Props) {
+  const { messages, isStreaming, ask, stop, reset, retry } = useChat();
+  const wide = useMediaQuery(BREAKPOINTS.xl);
+  const [active, setActive] = useState<ActiveSource | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const { ref: scrollRef, onScroll, atBottom, pin, scrollToBottom } =
+    useAutoScroll<HTMLDivElement>(messages);
+
+  const latest = lastAssistant(messages);
+  const railMessage = (active && messages.find((m) => m.id === active.messageId)) || latest;
+
+  const handleAsk = useCallback(
+    (question: string) => {
+      setActive(null);
+      pin();
+      void ask(question, { courseCode });
+    },
+    [ask, courseCode, pin],
+  );
+
+  const handleCite = useCallback((messageId: string, marker: number) => {
+    setActive((prev) => ({ messageId, marker, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  const handleRetry = useCallback(
+    (messageId: string) => {
+      setActive(null);
+      pin();
+      retry(messageId);
+    },
+    [retry, pin],
+  );
+
+  const newChat = () => {
+    reset();
+    setActive(null);
+    composerRef.current?.focus();
+  };
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-      <div>
-        <h3 className="text-lg font-semibold text-ink-800">
-          Ask a question about your course materials
-        </h3>
-        <p className="mt-1 text-sm text-ink-500">
-          Answers stream in token-by-token with citations to the source PDF and page.
+    <div className="flex h-full min-h-0 gap-4">
+      <section
+        aria-label="Chat"
+        className="card relative flex min-w-0 flex-1 flex-col overflow-hidden"
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-ink-200 px-3 py-2 sm:px-4">
+          <p className="flex min-w-0 items-center gap-1.5 text-sm text-ink-600">
+            <Filter className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">
+              {courseCode ? (
+                <>
+                  Answering from <span className="font-medium text-ink-900">{courseCode}</span>
+                </>
+              ) : (
+                "Answering from all courses"
+              )}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={newChat}
+            disabled={messages.length === 0}
+            className="btn-ghost shrink-0 px-2.5 py-1.5"
+          >
+            <SquarePen className="h-4 w-4" aria-hidden="true" />
+            New chat
+          </button>
+        </div>
+
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            tabIndex={0}
+            role="region"
+            aria-label="Conversation"
+            className="h-full overflow-y-auto overscroll-contain focus-visible:ring-inset focus-visible:ring-offset-0"
+          >
+            {messages.length === 0 ? (
+              <div className="h-full px-4">
+                <EmptyState libraryEmpty={libraryEmpty} onAsk={handleAsk} onUpload={onRequestUpload} />
+              </div>
+            ) : (
+              <div className="mx-auto max-w-3xl space-y-6 px-3 py-6 sm:px-5">
+                {messages.map((m) => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    activeMarker={active?.messageId === m.id ? active.marker : null}
+                    focusNonce={active?.messageId === m.id ? active.nonce : 0}
+                    inlineSources={!wide}
+                    onCite={handleCite}
+                    onRetry={handleRetry}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!atBottom && messages.length > 0 && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              aria-label="Jump to latest"
+              title="Jump to latest"
+              className="btn-secondary absolute bottom-3 left-1/2 h-9 w-9 -translate-x-1/2 rounded-full p-0 shadow-md"
+            >
+              <ArrowDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        <Composer
+          ref={composerRef}
+          isStreaming={isStreaming}
+          courseCode={courseCode}
+          onSubmit={handleAsk}
+          onStop={stop}
+        />
+
+        <p role="status" className="sr-only">
+          {statusAnnouncement(latest)}
         </p>
-      </div>
-      <ul className="space-y-1 text-sm text-ink-500">
-        {examples.map((e) => (
-          <li key={e} className="font-mono text-xs">
-            “{e}”
-          </li>
-        ))}
-      </ul>
+      </section>
+
+      {wide && (
+        <aside aria-label="Sources for the selected answer" className="w-80 shrink-0 overflow-y-auto pb-2">
+          {railMessage ? (
+            <SourcesPanel
+              message={railMessage}
+              activeMarker={active?.messageId === railMessage.id ? active.marker : null}
+              focusNonce={active?.nonce ?? 0}
+            />
+          ) : (
+            <div className="space-y-2 px-1">
+              <h2 className="section-title">Sources</h2>
+              <p className="text-sm text-ink-500">
+                The passages behind each answer appear here. Click a numbered marker in an answer
+                to jump to its source.
+              </p>
+            </div>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

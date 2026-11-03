@@ -2,41 +2,170 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design tokens (RGB channels). Light values target WCAG AA: body text ink-900/800 and
+ * muted text ink-500+ on surface/canvas are >= 4.5:1; ink-400 is for icons only.
+ */
 @layer base {
-  html, body, #root { height: 100%; }
-  body { font-feature-settings: "cv11", "ss01"; }
+  :root {
+    color-scheme: light;
+    --canvas: 246 247 249;
+    --surface: 255 255 255;
+    --ink-50: 246 247 249;
+    --ink-100: 236 238 242;
+    --ink-200: 212 216 225;
+    --ink-300: 169 176 192;
+    --ink-400: 124 132 151;
+    --ink-500: 90 99 119;
+    --ink-600: 68 75 93;
+    --ink-700: 54 60 75;
+    --ink-800: 37 42 53;
+    --ink-900: 24 28 36;
+    --ink-950: 14 17 22;
+    --accent: 37 99 235; /* white text on it: 5.2:1 */
+    --accent-fg: 255 255 255;
+    --accent-text: 29 78 216; /* on surface: 6.7:1 */
+  }
+
+  .dark {
+    color-scheme: dark;
+    --canvas: 11 14 19;
+    --surface: 19 23 30;
+    --ink-50: 15 19 25;
+    --ink-100: 27 32 41;
+    --ink-200: 43 50 63;
+    --ink-300: 66 74 90;
+    --ink-400: 120 129 147;
+    --ink-500: 158 166 182;
+    --ink-600: 184 191 204;
+    --ink-700: 205 211 221;
+    --ink-800: 225 229 236;
+    --ink-900: 240 242 246;
+    --ink-950: 248 249 251;
+    --accent: 37 99 235;
+    --accent-fg: 255 255 255;
+    --accent-text: 138 180 248;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-canvas font-sans text-ink-900 antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium
-           transition-colors focus-visible:outline-none focus-visible:ring-2
-           focus-visible:ring-accent disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium
+           transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-accent text-accent-fg hover:bg-accent/90;
+    @apply btn bg-accent text-accent-fg shadow-sm hover:bg-accent/90;
+  }
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-surface text-ink-800 shadow-sm hover:bg-ink-100;
   }
   .btn-ghost {
     @apply btn text-ink-700 hover:bg-ink-100;
   }
+  .btn-danger {
+    @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700;
+  }
+  .icon-btn {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-600
+           transition-colors hover:bg-ink-100 hover:text-ink-900 disabled:opacity-50;
+  }
   .card {
-    @apply rounded-xl border border-ink-200 bg-white shadow-sm;
+    @apply rounded-xl border border-ink-200 bg-surface shadow-sm;
+  }
+  .field {
+    @apply w-full rounded-lg border border-ink-200 bg-surface px-3 py-2 text-sm text-ink-900
+           placeholder:text-ink-500 focus-visible:border-accent;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-700;
+  }
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-wide text-ink-500;
   }
 }
 
-/* Markdown / KaTeX-ish typography */
+/* Answer typography (markdown + KaTeX). */
 .prose-answer {
-  @apply leading-relaxed;
+  @apply break-words text-[0.9375rem] leading-relaxed text-ink-900;
 }
-.prose-answer p { @apply my-2; }
-.prose-answer ul { @apply list-disc pl-5 my-2; }
-.prose-answer ol { @apply list-decimal pl-5 my-2; }
+.prose-answer > :first-child {
+  @apply mt-0;
+}
+.prose-answer > :last-child {
+  @apply mb-0;
+}
+.prose-answer p {
+  @apply my-2.5;
+}
+.prose-answer h1,
+.prose-answer h2,
+.prose-answer h3,
+.prose-answer h4 {
+  @apply mb-2 mt-4 font-semibold text-ink-900;
+}
+.prose-answer h1 {
+  @apply text-lg;
+}
+.prose-answer h2 {
+  @apply text-base;
+}
+.prose-answer ul {
+  @apply my-2.5 list-disc space-y-1 pl-5;
+}
+.prose-answer ol {
+  @apply my-2.5 list-decimal space-y-1 pl-5;
+}
+.prose-answer a {
+  @apply font-medium text-accent-text underline underline-offset-2;
+}
+.prose-answer blockquote {
+  @apply my-3 border-l-2 border-ink-300 pl-3 text-ink-700;
+}
 .prose-answer code {
-  @apply rounded bg-ink-100 px-1 py-0.5 text-[0.85em] font-mono;
+  @apply rounded bg-ink-100 px-1 py-0.5 font-mono text-[0.85em];
 }
 .prose-answer pre {
-  @apply rounded-lg bg-ink-900 text-ink-50 p-3 overflow-x-auto my-3 text-xs;
+  @apply my-3 overflow-x-auto rounded-lg bg-ink-950 p-3 text-xs text-ink-50;
+}
+.dark .prose-answer pre {
+  @apply bg-black/40 text-ink-900;
 }
 .prose-answer pre code {
-  @apply bg-transparent p-0 text-ink-50;
+  @apply bg-transparent p-0 text-inherit;
+}
+.prose-answer table {
+  @apply my-3 block w-full overflow-x-auto border-collapse text-sm;
+}
+.prose-answer th,
+.prose-answer td {
+  @apply border border-ink-200 px-2 py-1 text-left;
+}
+.prose-answer th {
+  @apply bg-ink-100 font-semibold;
+}
+.prose-answer .katex-display {
+  @apply my-3 overflow-x-auto overflow-y-hidden py-1;
 }

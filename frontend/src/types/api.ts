@@ -26,24 +26,43 @@ export interface DocumentUploadResponse {
 }
 
 export interface Citation {
+  /** 1-based marker matching `[n]` in the answer text. */
   marker: number;
   chunk_id: string;
   document_id: string;
   document_title: string;
   page_number: number | null;
   snippet: string;
-  score?: number;
+  score?: number | null;
+}
+
+export type ChatRole = "user" | "assistant";
+
+export interface ChatTurn {
+  role: ChatRole;
+  content: string;
 }
 
 export interface ChatRequest {
   question: string;
   course_code?: string | null;
-  conversation_id?: string | null;
+  /** Prior turns (oldest first, max 10); the backend condenses follow-ups. */
+  history?: ChatTurn[];
+}
+
+export interface DonePayload {
+  answer: string;
+  [extra: string]: unknown;
+}
+
+export interface ErrorPayload {
+  message: string;
+  request_id?: string;
 }
 
 export type StreamEvent =
   | { type: "context"; data: Citation[] }
   | { type: "token"; data: string }
   | { type: "citations"; data: Citation[] }
-  | { type: "done"; data: { answer: string } }
-  | { type: "error"; data: { message: string } };
+  | { type: "done"; data: DonePayload }
+  | { type: "error"; data: ErrorPayload };
