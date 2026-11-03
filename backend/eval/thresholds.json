@@ -1,0 +1,148 @@
+{
+  "_comment": [
+    "Regression gates for python -m eval.retrieval_eval / eval.generation_eval.",
+    "The first profile whose 'match' equals the current settings is used (or --profile NAME).",
+    "Retrieval gates the production ranking (hybrid RRF + rerank; equals hybrid when RERANKER_PROVIDER=none).",
+    "'min' = measured - 0.04 rounded down to 2 decimals (about two questions of slack); hard invariants (non-empty, valid citations, no errors) are exact.",
+    "refusal_accuracy is only gated when RERANK_MIN_SCORE is set: without it the fake LLM refuses only when retrieval is empty,",
+    "and dense retrieval always returns rows, so it measures 0.0 by construction. With RERANK_MIN_SCORE=-9 it measured 6/8."
+  ],
+  "retrieval": [
+    {
+      "name": "local-minilm",
+      "match": {
+        "embedding_provider": "local",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "embedding_dim": 384,
+        "reranker_provider": "local",
+        "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2"
+      },
+      "measured": {
+        "hit@1": 0.915,
+        "recall@5": 0.979,
+        "mrr@10": 0.95,
+        "ndcg@10": 0.962
+      },
+      "min": {
+        "hit@1": 0.87,
+        "recall@5": 0.93,
+        "mrr@10": 0.91,
+        "ndcg@10": 0.92
+      }
+    },
+    {
+      "name": "offline-hash",
+      "match": {
+        "embedding_provider": "hash",
+        "embedding_dim": 256,
+        "reranker_provider": "none"
+      },
+      "measured": {
+        "hit@1": 0.702,
+        "recall@5": 0.947,
+        "mrr@10": 0.824,
+        "ndcg@10": 0.864
+      },
+      "min": {
+        "hit@1": 0.66,
+        "recall@5": 0.9,
+        "mrr@10": 0.78,
+        "ndcg@10": 0.82
+      }
+    }
+  ],
+  "generation": [
+    {
+      "name": "fake-llm-local-minilm-refusal",
+      "match": {
+        "llm_provider": "fake",
+        "embedding_provider": "local",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "embedding_dim": 384,
+        "reranker_provider": "local",
+        "rerank_min_score": "-9.0"
+      },
+      "measured": {
+        "non_empty_rate": 1.0,
+        "citation_validity": 1.0,
+        "citation_coverage": 1.0,
+        "context_recall": 0.979,
+        "cited_relevant_rate": 0.979,
+        "false_refusal_rate": 0.0,
+        "error_rate": 0.0,
+        "refusal_accuracy": 0.75
+      },
+      "min": {
+        "non_empty_rate": 1.0,
+        "citation_validity": 1.0,
+        "citation_coverage": 0.96,
+        "context_recall": 0.93,
+        "cited_relevant_rate": 0.93,
+        "refusal_accuracy": 0.62
+      },
+      "max": {
+        "false_refusal_rate": 0.05,
+        "error_rate": 0.0
+      }
+    },
+    {
+      "name": "fake-llm-local-minilm",
+      "match": {
+        "llm_provider": "fake",
+        "embedding_provider": "local",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "embedding_dim": 384,
+        "reranker_provider": "local"
+      },
+      "measured": {
+        "non_empty_rate": 1.0,
+        "citation_validity": 1.0,
+        "citation_coverage": 1.0,
+        "context_recall": 0.979,
+        "cited_relevant_rate": 0.979,
+        "false_refusal_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "min": {
+        "non_empty_rate": 1.0,
+        "citation_validity": 1.0,
+        "citation_coverage": 0.96,
+        "context_recall": 0.93,
+        "cited_relevant_rate": 0.93
+      },
+      "max": {
+        "false_refusal_rate": 0.05,
+        "error_rate": 0.0
+      }
+    },
+    {
+      "name": "fake-llm-offline-hash",
+      "match": {
+        "llm_provider": "fake",
+        "embedding_provider": "hash",
+        "embedding_dim": 256,
+        "reranker_provider": "none"
+      },
+      "measured": {
+        "non_empty_rate": 1.0,
+        "citation_validity": 1.0,
+        "citation_coverage": 1.0,
+        "context_recall": 0.947,
+        "cited_relevant_rate": 0.936,
+        "false_refusal_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "min": {
+        "non_empty_rate": 1.0,
+        "citation_validity": 1.0,
+        "citation_coverage": 0.96,
+        "context_recall": 0.9,
+        "cited_relevant_rate": 0.89
+      },
+      "max": {
+        "false_refusal_rate": 0.05,
+        "error_rate": 0.0
+      }
+    }
+  ]
+}
