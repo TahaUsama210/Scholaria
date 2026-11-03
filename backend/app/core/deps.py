@@ -1,4 +1,5 @@
 """FastAPI dependency providers — kept here so route modules stay thin."""
+
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -10,6 +11,11 @@ from app.db.session import async_session_factory
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
+    """Request-scoped session.
+
+    The trailing commit runs only after the response has been sent, so routes that
+    write must commit explicitly before responding or scheduling background work.
+    """
     async with async_session_factory() as session:
         try:
             yield session

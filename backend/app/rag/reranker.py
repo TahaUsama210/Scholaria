@@ -4,9 +4,12 @@ A cross-encoder scores (query, passage) jointly, which is far more accurate
 than the bi-encoder embeddings used during retrieval — at the cost of latency.
 Run it on the top-K of the fused list, not the full corpus.
 """
+
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import Protocol
 
 from app.core.config import Settings
@@ -31,7 +34,7 @@ class NoopReranker(Reranker):
 
 
 class _CrossEncoderProto(Protocol):
-    def predict(self, sentence_pairs: list[tuple[str, str]]) -> list[float]: ...
+    def predict(self, sentences: list[tuple[str, str]]) -> Sequence[float]: ...
 
 
 class LocalCrossEncoderReranker(Reranker):
@@ -42,9 +45,12 @@ class LocalCrossEncoderReranker(Reranker):
     """
 
     def __init__(self, model_name: str) -> None:
-        from sentence_transformers import CrossEncoder  # noqa: PLC0415
+        from sentence_transformers import CrossEncoder
 
         self._model: _CrossEncoderProto = CrossEncoder(model_name)
+
+    def _score(self, pairs: list[tuple[str, str]]) -> list[float]:
+        return [float(s) for s in self._model.predict(pairs)]
 
     async def rerank(
         self, query: str, chunks: list[RetrievedChunk], *, top_n: int
@@ -52,7 +58,8 @@ class LocalCrossEncoderReranker(Reranker):
         if not chunks:
             return []
         pairs = [(query, c.content) for c in chunks]
-        scores = self._model.predict(pairs)
+        # Cross-encoder inference is CPU-bound: keep it off the event loop.
+        scores = await asyncio.to_thread(self._score, pairs)
         ranked = sorted(zip(chunks, scores, strict=True), key=lambda x: x[1], reverse=True)
         out = [
             RetrievedChunk(
@@ -73,7 +80,7 @@ class CohereReranker(Reranker):
     """Cohere Rerank — managed API alternative. Set COHERE_API_KEY to enable."""
 
     def __init__(self, *, api_key: str, model: str = "rerank-english-v3.0") -> None:
-        import cohere  # noqa: PLC0415
+        import cohere  # optional dependency (pip install ".[cohere]")
 
         self._client = cohere.AsyncClient(api_key=api_key)
         self._model = model

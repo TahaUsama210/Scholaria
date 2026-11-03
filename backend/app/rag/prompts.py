@@ -3,6 +3,9 @@
 Kept in one place so eval can diff prompt revisions and we can A/B them
 without surgery on the generator.
 """
+
+from collections.abc import Sequence
+
 from langchain_core.prompts import ChatPromptTemplate
 
 SYSTEM_PROMPT = """\
@@ -27,9 +30,31 @@ Context (numbered for citation):
 Answer with citations:
 """
 
-CHAT_PROMPT = ChatPromptTemplate.from_messages(
-    [("system", SYSTEM_PROMPT), ("user", USER_TEMPLATE)]
+CHAT_PROMPT = ChatPromptTemplate.from_messages([("system", SYSTEM_PROMPT), ("user", USER_TEMPLATE)])
+
+CONDENSE_SYSTEM_PROMPT = """\
+Rewrite the user's latest message as a single standalone question that can be
+understood without the conversation. Resolve pronouns and references ("it",
+"that algorithm", "the second one") using the conversation. Keep course codes,
+technical terms and formulas verbatim. If the message is already standalone,
+return it unchanged. Output only the question — no preamble, no quotes.
+"""
+
+CONDENSE_USER_TEMPLATE = """\
+Conversation:
+{history}
+
+Latest message: {question}
+
+Standalone question:
+"""
+
+CONDENSE_PROMPT = ChatPromptTemplate.from_messages(
+    [("system", CONDENSE_SYSTEM_PROMPT), ("user", CONDENSE_USER_TEMPLATE)]
 )
+
+# Keep the condense prompt small: older turns rarely matter for reference resolution.
+_HISTORY_CHARS_PER_TURN = 1000
 
 
 def format_context(chunks: list[tuple[str, str, int | None]]) -> str:
@@ -39,3 +64,13 @@ def format_context(chunks: list[tuple[str, str, int | None]]) -> str:
         loc = f"{title}, p.{page}" if page is not None else title
         lines.append(f"[{i}] ({loc})\n{content.strip()}")
     return "\n\n".join(lines)
+
+
+def format_history(turns: Sequence[tuple[str, str]]) -> str:
+    """Render (role, content) turns as 'User: ...' / 'Assistant: ...' lines."""
+    lines = []
+    for role, content in turns:
+        speaker = "User" if role == "user" else "Assistant"
+        text = " ".join(content.split())[:_HISTORY_CHARS_PER_TURN]
+        lines.append(f"{speaker}: {text}")
+    return "\n".join(lines)

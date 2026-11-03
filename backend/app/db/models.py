@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Computed,
     ForeignKey,
     Index,
     Integer,
@@ -41,12 +42,15 @@ class Document(Base, TimestampMixin):
     page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text)
-    extra_metadata: Mapped[dict[str, object]] = mapped_column(
-        JSONB, default=dict, nullable=False
-    )
+    extra_metadata: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
 
+    # Never load chunks implicitly: each carries a full embedding vector. Deletes rely
+    # on the FK's ON DELETE CASCADE instead of loading children first.
     chunks: Mapped[list["Chunk"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="document",
+        cascade="all, delete-orphan",
+        lazy="raise",
+        passive_deletes=True,
     )
 
 
@@ -66,10 +70,13 @@ class Chunk(Base, TimestampMixin):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
-    # Generated tsvector for BM25-style sparse search; created in Alembic migration.
-    content_tsv: Mapped[str | None] = mapped_column(TSVECTOR)
+    # Generated (STORED) tsvector for sparse search. Declared Computed so the ORM never
+    # writes it — Postgres rejects explicit values for generated columns.
+    content_tsv: Mapped[str | None] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('english', content)", persisted=True)
+    )
 
-    document: Mapped[Document] = relationship(back_populates="chunks")
+    document: Mapped[Document] = relationship(back_populates="chunks", lazy="raise")
 
     __table_args__ = (
         # HNSW index on the embedding column gives O(log n) approx-NN at ~99% recall.
