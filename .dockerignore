@@ -1,0 +1,48 @@
+# Build context is the repo root (see Dockerfile). Keep it small and secret-free.
+
+# VCS / editors / agents
+.git
+.github
+.claude
+.vscode
+.idea
+**/.DS_Store
+
+# Secrets: never bake local config into an image
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Python
+**/.venv
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/coverage.xml
+**/htmlcov
+**/*.egg-info
+backend/eval_results
+backend/uploads
+
+# Node
+**/node_modules
+frontend/dist
+frontend/*.tsbuildinfo
+frontend/playwright-report
+frontend/test-results
+frontend/blob-report
+frontend/coverage
+
+# Not needed by any image stage
+docs
+loadtest
+ops
+*.md
+Makefile
+docker-compose*.yml
+fly.toml

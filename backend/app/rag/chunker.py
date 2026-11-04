@@ -4,6 +4,7 @@ Naive char/word splits cut mid-formula on technical PDFs. We split on the
 strongest semantic boundary that keeps every chunk under the token budget,
 falling back to softer boundaries only when a section is too long.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,12 +15,12 @@ import tiktoken
 # split at the current boundary still leaves a chunk over the budget, it
 # recurses into that chunk with the next boundary.
 SPLIT_BOUNDARIES: tuple[str, ...] = (
-    "\n\n\n",   # major section break
-    "\n\n",     # paragraph
-    "\n",       # line
-    ". ",       # sentence
-    " ",        # word
-    "",         # char (last resort)
+    "\n\n\n",  # major section break
+    "\n\n",  # paragraph
+    "\n",  # line
+    ". ",  # sentence
+    " ",  # word
+    "",  # char (last resort)
 )
 
 
@@ -72,9 +73,7 @@ class TokenChunker:
                 out.extend(self._recursive_split(piece, boundary_idx=boundary_idx + 1))
         return out
 
-    def _stitch_with_overlap(
-        self, pieces: list[str], *, page_number: int | None
-    ) -> list[Chunk]:
+    def _stitch_with_overlap(self, pieces: list[str], *, page_number: int | None) -> list[Chunk]:
         """Greedily pack pieces into chunks ≤ chunk_size, with token overlap."""
         chunks: list[Chunk] = []
         buf: list[str] = []
@@ -83,13 +82,16 @@ class TokenChunker:
         for piece in pieces:
             piece_tokens = self.count_tokens(piece)
             if buf_tokens + piece_tokens > self.chunk_size and buf:
-                chunks.append(self._emit(buf, buf_tokens, page_number))
+                chunks.append(self._emit(buf, page_number))
                 buf, buf_tokens = self._tail_overlap(buf)
+                # The carried overlap must not push the next chunk over budget.
+                while buf and buf_tokens + piece_tokens > self.chunk_size:
+                    buf_tokens -= self.count_tokens(buf.pop(0))
             buf.append(piece)
             buf_tokens += piece_tokens
 
         if buf:
-            chunks.append(self._emit(buf, buf_tokens, page_number))
+            chunks.append(self._emit(buf, page_number))
         return chunks
 
     def _tail_overlap(self, buf: list[str]) -> tuple[list[str], int]:
@@ -107,6 +109,7 @@ class TokenChunker:
         kept.reverse()
         return kept, kept_tokens
 
-    @staticmethod
-    def _emit(buf: list[str], tokens: int, page: int | None) -> Chunk:
-        return Chunk(text="".join(buf).strip(), token_count=tokens, page_number=page)
+    def _emit(self, buf: list[str], page: int | None) -> Chunk:
+        # Count the emitted text itself: piece counts don't add up exactly across joins.
+        text = "".join(buf).strip()
+        return Chunk(text=text, token_count=self.count_tokens(text), page_number=page)

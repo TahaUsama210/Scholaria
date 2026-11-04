@@ -1,0 +1,92 @@
+# Scholaria SLOs (targets, not measurements):
+#   1. Chat latency:      p95 time-to-first-token (TTFT) <= 2.5 s over 5 minutes.
+#   2. Chat availability: 99% of chat requests finish without an error (error budget 1%),
+#      alerted with multi-window, multi-burn-rate rules (Google SRE workbook, ch. 5).
+# Chat errors happen inside a 200 SSE stream, so availability uses the pipeline outcome
+# counter rather than HTTP status codes. Unit tests: ops/prometheus/tests/slo_test.yml.
+
+groups:
+  - name: scholaria-slo-recording
+    rules:
+      - record: scholaria:rag_ttft_seconds:p95_5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by (le) (rate(scholaria_rag_stage_duration_seconds_bucket{stage="generate_ttft"}[5m])))
+
+      - record: scholaria:rag_error_ratio:rate5m
+        expr: >
+          sum(rate(scholaria_rag_requests_total{outcome="error"}[5m]))
+          / sum(rate(scholaria_rag_requests_total[5m]))
+      - record: scholaria:rag_error_ratio:rate30m
+        expr: >
+          sum(rate(scholaria_rag_requests_total{outcome="error"}[30m]))
+          / sum(rate(scholaria_rag_requests_total[30m]))
+      - record: scholaria:rag_error_ratio:rate1h
+        expr: >
+          sum(rate(scholaria_rag_requests_total{outcome="error"}[1h]))
+          / sum(rate(scholaria_rag_requests_total[1h]))
+      - record: scholaria:rag_error_ratio:rate6h
+        expr: >
+          sum(rate(scholaria_rag_requests_total{outcome="error"}[6h]))
+          / sum(rate(scholaria_rag_requests_total[6h]))
+
+      - record: scholaria:http_5xx_ratio:rate5m
+        expr: >
+          sum(rate(scholaria_http_requests_total{status=~"5..", route!="/metrics"}[5m]))
+          / sum(rate(scholaria_http_requests_total{route!="/metrics"}[5m]))
+
+  - name: scholaria-slo-alerts
+    rules:
+      - alert: ScholariaChatTTFTp95High
+        expr: scholaria:rag_ttft_seconds:p95_5m > 2.5
+        for: 10m
+        labels:
+          severity: warning
+          slo: chat-ttft
+        annotations:
+          summary: Chat p95 time-to-first-token is above the 2.5 s SLO.
+          description: 'p95 TTFT over the last 5m is {{ $value | printf "%.2f" }}s.'
+
+      # Burning 14.4x the budget exhausts a 30-day budget in ~2 days: page.
+      - alert: ScholariaChatErrorBudgetFastBurn
+        expr: >
+          scholaria:rag_error_ratio:rate1h > (14.4 * 0.01)
+          and scholaria:rag_error_ratio:rate5m > (14.4 * 0.01)
+        for: 2m
+        labels:
+          severity: critical
+          slo: chat-availability
+        annotations:
+          summary: Chat error budget is burning fast (>14.4x).
+          description: '{{ $value | humanizePercentage }} of chat requests failed over the last hour.'
+
+      # Burning 6x the budget exhausts it in ~5 days: ticket.
+      - alert: ScholariaChatErrorBudgetSlowBurn
+        expr: >
+          scholaria:rag_error_ratio:rate6h > (6 * 0.01)
+          and scholaria:rag_error_ratio:rate30m > (6 * 0.01)
+        for: 15m
+        labels:
+          severity: warning
+          slo: chat-availability
+        annotations:
+          summary: Chat error budget is burning (>6x).
+          description: '{{ $value | humanizePercentage }} of chat requests failed over the last 6h.'
+
+      - alert: ScholariaApiHigh5xxRatio
+        expr: scholaria:http_5xx_ratio:rate5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5% of API requests return 5xx.
+          description: '{{ $value | humanizePercentage }} of requests failed over the last 5m.'
+
+      - alert: ScholariaApiDown
+        expr: up{job="scholaria-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prometheus cannot scrape the Scholaria API.
+          description: 'Target {{ $labels.instance }} has been down for 2 minutes.'

@@ -1,0 +1,9 @@
+# Observability overlay: sends the API's OpenTelemetry traces to Jaeger (OTLP/HTTP).
+# Use it together with the "obs" profile, which starts Prometheus, Grafana and Jaeger:
+#   docker compose -f docker-compose.yml -f docker-compose.obs.yml --profile obs up -d --build
+# (or `make obs`). Without this file the API exports no traces.
+services:
+  backend:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: scholaria-api

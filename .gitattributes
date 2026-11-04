@@ -1,0 +1,9 @@
+# Normalise line endings in the repo; shell scripts and container files must stay LF
+# even on Windows checkouts with core.autocrlf=true.
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+Makefile text eol=lf
+*.png binary
+*.pdf binary

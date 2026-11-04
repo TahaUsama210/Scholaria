@@ -1,0 +1,19 @@
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+*.local
+
+# Test artefacts (vitest coverage, Playwright)
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Logs / OS noise
+*.log
+.DS_Store
+Thumbs.db

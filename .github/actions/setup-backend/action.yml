@@ -1,0 +1,33 @@
+name: Set up backend
+description: >
+  uv + Python 3.12, and backend/.venv with CPU-only torch, the backend (editable) and the
+  CI-pinned ruff/mypy. Reads TORCH_VERSION, RUFF_VERSION and MYPY_VERSION from the job env.
+
+inputs:
+  extras:
+    description: Optional dependency groups of backend/pyproject.toml, comma-separated.
+    default: dev
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v7
+      with:
+        python-version: "3.12"
+        enable-cache: true
+        cache-dependency-glob: backend/pyproject.toml
+
+    - name: Install backend
+      shell: bash
+      working-directory: backend
+      env:
+        EXTRAS: ${{ inputs.extras }}
+      run: |
+        uv venv .venv
+        # CPU wheel first: sentence-transformers would otherwise pull the multi-GB CUDA build.
+        uv pip install --python .venv --index-url https://download.pytorch.org/whl/cpu \
+          "torch==${TORCH_VERSION}"
+        uv pip install --python .venv -e ".[${EXTRAS}]" \
+          "ruff==${RUFF_VERSION}" "mypy==${MYPY_VERSION}"
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+        echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"

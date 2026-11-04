@@ -1,0 +1,87 @@
+# promtool test rules ops/prometheus/tests/slo_test.yml  (see Makefile: make promtool)
+rule_files:
+  - ../rules/scholaria-slo.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 30% of chat requests fail: both burn-rate windows exceed 14.4x a 1% budget.
+  - interval: 1m
+    input_series:
+      - series: 'scholaria_rag_requests_total{outcome="answered"}'
+        values: "0+7x120"
+      - series: 'scholaria_rag_requests_total{outcome="error"}'
+        values: "0+3x120"
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: ScholariaChatErrorBudgetFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: chat-availability
+            exp_annotations:
+              summary: Chat error budget is burning fast (>14.4x).
+              description: 30% of chat requests failed over the last hour.
+
+  # 0.5% errors stays inside a 1% budget: no burn alerts.
+  - interval: 1m
+    input_series:
+      - series: 'scholaria_rag_requests_total{outcome="answered"}'
+        values: "0+199x400"
+      - series: 'scholaria_rag_requests_total{outcome="error"}'
+        values: "0+1x400"
+    alert_rule_test:
+      - eval_time: 390m
+        alertname: ScholariaChatErrorBudgetFastBurn
+        exp_alerts: []
+      - eval_time: 390m
+        alertname: ScholariaChatErrorBudgetSlowBurn
+        exp_alerts: []
+
+  # Every first token takes ~4 s (between the 2.5 s and 5 s buckets): p95 interpolates
+  # to 4.875 s and the latency alert fires once the 10m "for" has elapsed.
+  - interval: 1m
+    input_series:
+      - series: 'scholaria_rag_stage_duration_seconds_bucket{stage="generate_ttft",le="1"}'
+        values: "0x30"
+      - series: 'scholaria_rag_stage_duration_seconds_bucket{stage="generate_ttft",le="2.5"}'
+        values: "0x30"
+      - series: 'scholaria_rag_stage_duration_seconds_bucket{stage="generate_ttft",le="5"}'
+        values: "0+10x30"
+      - series: 'scholaria_rag_stage_duration_seconds_bucket{stage="generate_ttft",le="+Inf"}'
+        values: "0+10x30"
+    promql_expr_test:
+      - expr: scholaria:rag_ttft_seconds:p95_5m
+        eval_time: 10m
+        exp_samples:
+          - labels: "scholaria:rag_ttft_seconds:p95_5m"
+            value: 4.875
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ScholariaChatTTFTp95High
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ScholariaChatTTFTp95High
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: chat-ttft
+            exp_annotations:
+              summary: Chat p95 time-to-first-token is above the 2.5 s SLO.
+              description: p95 TTFT over the last 5m is 4.88s.
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="scholaria-api", instance="backend:8000"}'
+        values: "1 1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ScholariaApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: scholaria-api
+              instance: backend:8000
+            exp_annotations:
+              summary: Prometheus cannot scrape the Scholaria API.
+              description: Target backend:8000 has been down for 2 minutes.

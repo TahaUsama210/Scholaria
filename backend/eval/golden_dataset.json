@@ -1,36 +1,408 @@
 {
-  "version": 1,
-  "description": "Golden Q/A pairs over the seeded demo course materials. Used by Ragas in CI.",
-  "samples": [
+  "version": 2,
+  "description": "Golden questions over the demo corpus in scripts/corpus (4 courses x 8 sections, one section per PDF page). Relevance is labelled per section as {course_code, page}. Validate with `python -m eval.dataset`.",
+  "changelog": [
+    "v2: 55 questions in five categories over a 32-section corpus; section-level relevance labels; reference answers replace Ragas ground_truth.",
+    "v1: 5 Ragas samples over a 6-section toy corpus."
+  ],
+  "questions": [
     {
-      "id": "ml_backprop_definition",
+      "id": "def-backprop",
+      "category": "definition",
       "question": "What does backpropagation compute, and why is it efficient?",
-      "ground_truth": "Backpropagation computes the gradient of the loss with respect to every parameter of a neural network by applying the chain rule in reverse from the output. It is efficient because it reuses intermediate activations from the forward pass, so the cost is on the same order as the forward pass itself.",
-      "course_code": "CS480"
+      "relevant": [{"course_code": "CS480", "page": 1}],
+      "reference_answer": "It computes the gradient of the loss with respect to every parameter by applying the chain rule in reverse from the output. The backward pass reuses the activations stored during the forward pass, so computing all gradients costs on the order of a single forward pass."
     },
     {
-      "id": "ml_overfitting_signs",
+      "id": "def-overfitting-signs",
+      "category": "definition",
       "question": "What are the classic signs of overfitting?",
-      "ground_truth": "Training loss continues to decrease while validation/test loss starts to rise; the model memorises training noise; performance gap between train and held-out data widens.",
-      "course_code": "CS480"
+      "relevant": [{"course_code": "CS480", "page": 2}],
+      "reference_answer": "Training loss keeps decreasing while validation loss stops improving and starts to rise, and the gap between training and held-out performance widens: the model has memorised noise in the training set."
     },
     {
-      "id": "db_normalization_3nf",
+      "id": "def-bias-variance",
+      "category": "definition",
+      "question": "How is expected prediction error decomposed in the bias-variance tradeoff?",
+      "relevant": [{"course_code": "CS480", "page": 3}],
+      "reference_answer": "Into bias squared, variance and irreducible noise. High-bias models underfit, high-variance models overfit, and increasing capacity typically lowers bias while raising variance."
+    },
+    {
+      "id": "def-kfold",
+      "category": "definition",
+      "question": "What is k-fold cross-validation?",
+      "relevant": [{"course_code": "CS480", "page": 6}],
+      "reference_answer": "The data is split into k equal folds; the model is trained k times, each time evaluated on a different held-out fold and trained on the other k-1, and the k scores are averaged so every example is used for validation once."
+    },
+    {
+      "id": "def-3nf",
+      "category": "definition",
       "question": "When is a relation in third normal form?",
-      "ground_truth": "A relation is in 3NF when it is in 2NF and every non-prime attribute is non-transitively dependent on every candidate key — equivalently, no non-prime attribute depends on another non-prime attribute.",
-      "course_code": "CS348"
+      "relevant": [{"course_code": "CS348", "page": 1}],
+      "reference_answer": "When it is in 2NF and every non-prime attribute is non-transitively dependent on every candidate key; equivalently no non-prime attribute depends on another non-prime attribute (for every non-trivial X -> A, X is a superkey or A is prime)."
     },
     {
-      "id": "db_acid_definition",
+      "id": "def-acid",
+      "category": "definition",
       "question": "What does ACID stand for in transaction processing?",
-      "ground_truth": "Atomicity, Consistency, Isolation, Durability. Atomicity: all-or-nothing. Consistency: invariants preserved. Isolation: concurrent transactions appear serial. Durability: committed changes survive failure.",
-      "course_code": "CS348"
+      "relevant": [{"course_code": "CS348", "page": 3}],
+      "reference_answer": "Atomicity (all operations succeed or none do), Consistency (integrity invariants are preserved), Isolation (concurrent transactions appear to run serially) and Durability (committed changes survive failures)."
     },
     {
-      "id": "out_of_scope_handling",
+      "id": "def-clustered-index",
+      "category": "definition",
+      "question": "What is a clustered index and how does it differ from a secondary index?",
+      "relevant": [{"course_code": "CS348", "page": 4}],
+      "reference_answer": "A clustered index stores the table rows themselves in index order, so a table can have only one; a secondary index stores keys together with pointers to the rows."
+    },
+    {
+      "id": "def-zombie",
+      "category": "definition",
+      "question": "What is a zombie process?",
+      "relevant": [{"course_code": "CS350", "page": 1}],
+      "reference_answer": "A child process that has exited but whose process-table entry remains until the parent calls wait() to collect its exit status."
+    },
+    {
+      "id": "def-tlb",
+      "category": "definition",
+      "question": "What is a translation lookaside buffer?",
+      "relevant": [{"course_code": "CS350", "page": 6}],
+      "reference_answer": "A small, fast associative cache of recent virtual-to-physical address translations inside the MMU, so most memory accesses avoid a multi-level page-table walk."
+    },
+    {
+      "id": "def-thrashing",
+      "category": "definition",
+      "question": "What is thrashing in a virtual memory system?",
+      "relevant": [{"course_code": "CS350", "page": 7}],
+      "reference_answer": "When the working sets of the running processes exceed physical memory, processes page-fault continuously, the CPU idles waiting for the disk and throughput collapses; the fix is to reduce multiprogramming or add memory."
+    },
+    {
+      "id": "def-longest-prefix",
+      "category": "definition",
+      "question": "What is the longest prefix match rule in IP forwarding?",
+      "relevant": [{"course_code": "CS456", "page": 4}],
+      "reference_answer": "When several forwarding-table entries contain the destination address, the router uses the most specific, longest prefix; for example a /24 entry overrides a /16 entry."
+    },
+    {
+      "id": "def-recursive-resolver",
+      "category": "definition",
+      "question": "What does a recursive DNS resolver do?",
+      "relevant": [{"course_code": "CS456", "page": 5}],
+      "reference_answer": "It resolves a name on the client's behalf, following referrals from a root server to the TLD servers to the domain's authoritative server, and caches the answers until their TTL expires."
+    },
+    {
+      "id": "kw-bcnf",
+      "category": "keyword",
+      "keyword": "BCNF",
+      "question": "What is BCNF and how is it stricter than 3NF?",
+      "relevant": [{"course_code": "CS348", "page": 2}],
+      "reference_answer": "A relation is in BCNF if for every non-trivial functional dependency X -> Y, X is a superkey. Unlike 3NF there is no exception for dependencies whose right-hand side is a prime attribute."
+    },
+    {
+      "id": "kw-sigkill",
+      "category": "keyword",
+      "keyword": "SIGKILL",
+      "question": "Can a process catch or ignore SIGKILL?",
+      "relevant": [{"course_code": "CS350", "page": 2}],
+      "reference_answer": "No. SIGKILL (like SIGSTOP) cannot be caught, blocked or ignored; it always terminates the process immediately, without giving it a chance to clean up."
+    },
+    {
+      "id": "kw-tcp-reno",
+      "category": "keyword",
+      "keyword": "TCP Reno",
+      "question": "How does TCP Reno react to three duplicate ACKs compared with a retransmission timeout?",
+      "relevant": [{"course_code": "CS456", "page": 3}],
+      "reference_answer": "Three duplicate ACKs trigger fast retransmit and fast recovery: ssthresh is set to half of cwnd, cwnd is set to the new ssthresh and the sender stays in congestion avoidance. A timeout resets cwnd to one segment and restarts slow start."
+    },
+    {
+      "id": "kw-relu",
+      "category": "keyword",
+      "keyword": "ReLU",
+      "question": "What does ReLU compute, and what is the dying ReLU problem?",
+      "relevant": [{"course_code": "CS480", "page": 4}],
+      "reference_answer": "ReLU computes max(0, x). A unit whose input is negative for every example outputs zero, gets zero gradient and may never recover; Leaky ReLU uses a small negative slope to avoid this."
+    },
+    {
+      "id": "kw-fork",
+      "category": "keyword",
+      "keyword": "fork()",
+      "question": "What does fork() return in the parent and in the child?",
+      "relevant": [{"course_code": "CS350", "page": 1}],
+      "reference_answer": "It returns 0 in the child and the child's PID in the parent; on failure it returns -1 in the parent and no child is created."
+    },
+    {
+      "id": "kw-wal",
+      "category": "keyword",
+      "keyword": "WAL",
+      "question": "What rule does WAL impose before a modified data page can be written to disk?",
+      "relevant": [{"course_code": "CS348", "page": 7}],
+      "reference_answer": "The log records describing the modification must already be on stable storage before the data page is written, and a transaction commits only once its commit record has been flushed."
+    },
+    {
+      "id": "kw-lru-flooding",
+      "category": "keyword",
+      "keyword": "LRU",
+      "question": "Why does LRU perform badly under sequential flooding in a database buffer pool?",
+      "relevant": [{"course_code": "CS348", "page": 5}],
+      "reference_answer": "A scan larger than the buffer pool reads each page once, evicting every useful page while never reusing its own pages. MRU, LRU-K, clock with usage counts and scan ring buffers avoid this."
+    },
+    {
+      "id": "kw-time-wait",
+      "category": "keyword",
+      "keyword": "TIME_WAIT",
+      "question": "What is the purpose of the TIME_WAIT state?",
+      "relevant": [{"course_code": "CS456", "page": 1}],
+      "reference_answer": "The side that closes first waits 2MSL so the final ACK can be retransmitted if lost and delayed segments of the old connection die out before the address and port pair is reused."
+    },
+    {
+      "id": "kw-aries",
+      "category": "keyword",
+      "keyword": "ARIES",
+      "question": "What are the three phases of ARIES recovery?",
+      "relevant": [{"course_code": "CS348", "page": 7}],
+      "reference_answer": "Analysis rebuilds the active-transaction and dirty-page tables from the last checkpoint, Redo repeats history by reapplying logged changes, and Undo rolls back uncommitted transactions while writing compensation log records."
+    },
+    {
+      "id": "kw-cname",
+      "category": "keyword",
+      "keyword": "CNAME",
+      "question": "What does a CNAME record do?",
+      "relevant": [{"course_code": "CS456", "page": 5}],
+      "reference_answer": "It declares a name to be an alias of another, canonical name."
+    },
+    {
+      "id": "kw-codel",
+      "category": "keyword",
+      "keyword": "CoDel",
+      "question": "How does CoDel decide when to start dropping packets?",
+      "relevant": [{"course_code": "CS456", "page": 7}],
+      "reference_answer": "It measures how long packets spend in the queue; if the minimum sojourn time stays above a 5 ms target for a 100 ms interval, it starts dropping so the queue drains to a low standing delay."
+    },
+    {
+      "id": "kw-vruntime",
+      "category": "keyword",
+      "keyword": "vruntime",
+      "question": "What does vruntime track in the Completely Fair Scheduler?",
+      "relevant": [{"course_code": "CS350", "page": 3}],
+      "reference_answer": "Each task's CPU time weighted by its nice value; CFS always runs the task with the smallest vruntime, kept in a red-black tree, so CPU time is shared in proportion to weights."
+    },
+    {
+      "id": "kw-o-direct",
+      "category": "keyword",
+      "keyword": "O_DIRECT",
+      "question": "Why do some database engines open their files with O_DIRECT?",
+      "relevant": [{"course_code": "CS348", "page": 5}],
+      "reference_answer": "Direct I/O bypasses the operating system's page cache, so pages already cached in the database's own buffer pool are not cached twice."
+    },
+    {
+      "id": "para-overfitting",
+      "category": "paraphrase",
+      "question": "Why might a model that aces its practice data stumble on brand-new examples?",
+      "relevant": [{"course_code": "CS480", "page": 2}],
+      "reference_answer": "It is overfitting: it has captured noise specific to the training set instead of the underlying signal, so performance on unseen data is much worse than on the training data."
+    },
+    {
+      "id": "para-dropout",
+      "category": "paraphrase",
+      "question": "What trick randomly silences parts of a network while it learns so that it cannot simply memorise?",
+      "relevant": [{"course_code": "CS480", "page": 2}],
+      "reference_answer": "Dropout: on each training step a random fraction of units (often half) is zeroed, so units cannot rely on specific partners and learn robust features; at test time all units are kept."
+    },
+    {
+      "id": "para-fork-return",
+      "category": "paraphrase",
+      "question": "Right after a program duplicates itself, how can each copy tell whether it is the original or the duplicate?",
+      "relevant": [{"course_code": "CS350", "page": 1}],
+      "reference_answer": "By the return value of fork(): it is 0 in the child and the child's PID in the parent."
+    },
+    {
+      "id": "para-congestion",
+      "category": "paraphrase",
+      "question": "What makes a sender ease off how fast it pushes data when the path between two machines gets crowded?",
+      "relevant": [{"course_code": "CS456", "page": 3}],
+      "reference_answer": "TCP congestion control: packet loss signals congestion and the sender shrinks its congestion window (multiplicative decrease in AIMD), growing it again additively."
+    },
+    {
+      "id": "para-durability",
+      "category": "paraphrase",
+      "question": "How does a store of records make sure work it already confirmed survives a sudden power cut?",
+      "relevant": [{"course_code": "CS348", "page": 3}, {"course_code": "CS348", "page": 7}],
+      "reference_answer": "Durability is provided by write-ahead logging: the transaction's log records, including its commit record, are forced to stable storage before the commit is acknowledged, so recovery can redo the change after the crash."
+    },
+    {
+      "id": "para-thrashing",
+      "category": "paraphrase",
+      "question": "Why would a computer grind almost to a standstill when too many programs compete for RAM?",
+      "relevant": [{"course_code": "CS350", "page": 7}],
+      "reference_answer": "Thrashing: the combined working sets exceed physical memory, so processes fault continuously and the CPU waits on the disk; reduce the number of running processes or add memory."
+    },
+    {
+      "id": "para-arp",
+      "category": "paraphrase",
+      "question": "How does a laptop learn the hardware address of a neighbour on its local network before sending it a frame?",
+      "relevant": [{"course_code": "CS456", "page": 6}],
+      "reference_answer": "With ARP: it broadcasts a request asking who has the IP address, the owner replies with its MAC address, and the mapping is cached in the ARP cache."
+    },
+    {
+      "id": "para-dns",
+      "category": "paraphrase",
+      "question": "When I type a site's name into the browser, what looks up which machine to contact?",
+      "relevant": [{"course_code": "CS456", "page": 5}],
+      "reference_answer": "DNS: the stub resolver asks a recursive resolver, which follows referrals from the root to the TLD to the authoritative server to obtain the IP address, caching it for its TTL."
+    },
+    {
+      "id": "para-bcnf-tradeoff",
+      "category": "paraphrase",
+      "question": "Why can stripping every bit of duplication out of a table design force some rules to be checked across several tables?",
+      "relevant": [{"course_code": "CS348", "page": 2}],
+      "reference_answer": "A BCNF decomposition is lossless but not always dependency-preserving, so a dependency such as {student, course} -> instructor may span tables and need a join or trigger to enforce; 3NF always allows a dependency-preserving decomposition."
+    },
+    {
+      "id": "para-convoy",
+      "category": "paraphrase",
+      "question": "Why can a single long computation at the front of the line make lots of short programs wait?",
+      "relevant": [{"course_code": "CS350", "page": 3}],
+      "reference_answer": "That is the convoy effect of first-come, first-served scheduling; shortest-job-first or round robin with a time quantum avoid it."
+    },
+    {
+      "id": "para-mvcc",
+      "category": "paraphrase",
+      "question": "How can a database let people read data while someone else is changing it, without anyone having to wait?",
+      "relevant": [{"course_code": "CS348", "page": 6}],
+      "reference_answer": "Multiversion concurrency control keeps several versions of each row and gives each transaction a consistent snapshot, so readers never block writers and writers never block readers."
+    },
+    {
+      "id": "para-bufferbloat",
+      "category": "paraphrase",
+      "question": "Why can giving a router much more memory for waiting packets make interactive apps feel sluggish?",
+      "relevant": [{"course_code": "CS456", "page": 7}],
+      "reference_answer": "Bufferbloat: loss-based congestion control keeps large buffers full, adding hundreds of milliseconds of queueing delay; active queue management such as CoDel keeps the standing queue short."
+    },
+    {
+      "id": "multi-lru-db-vs-os",
+      "category": "multi_hop",
+      "question": "How do LRU-style replacement policies differ between a database buffer pool and operating-system page replacement?",
+      "relevant": [{"course_code": "CS348", "page": 5}, {"course_code": "CS350", "page": 7}],
+      "reference_answer": "Both evict the least recently used page and approximate LRU with a clock algorithm. The buffer pool also faces sequential flooding from scans (hence MRU, LRU-K, ring buffers) and controls dirty-page write-back for WAL, while the OS uses the MMU's referenced bit and must avoid thrashing."
+    },
+    {
+      "id": "multi-wal-vs-journaling",
+      "category": "multi_hop",
+      "question": "How are write-ahead logging in databases and journaling in file systems alike?",
+      "relevant": [{"course_code": "CS348", "page": 7}, {"course_code": "CS350", "page": 8}],
+      "reference_answer": "Both write a description of an update to a sequential log and make it durable, ending with a commit record, before changing data in place; after a crash they replay committed work and discard or undo incomplete work."
+    },
+    {
+      "id": "multi-deadlock-db-vs-os",
+      "category": "multi_hop",
+      "question": "How does deadlock handling for database locks relate to the four Coffman conditions from operating systems?",
+      "relevant": [{"course_code": "CS348", "page": 6}, {"course_code": "CS350", "page": 5}],
+      "reference_answer": "Lock-based transactions satisfy mutual exclusion, hold and wait, no preemption and can form circular waits; databases detect cycles in the waits-for graph and abort a victim (or prevent them with wait-die/wound-wait), whereas OS code usually prevents circular wait with lock ordering."
+    },
+    {
+      "id": "multi-round-robin",
+      "category": "multi_hop",
+      "question": "Compare round-robin scheduling of processes on a CPU with round-robin scheduling of packets at a router.",
+      "relevant": [{"course_code": "CS350", "page": 3}, {"course_code": "CS456", "page": 7}],
+      "reference_answer": "CPU round robin gives each ready task a fixed time quantum, trading response time against context-switch overhead. Packet round robin serves one packet per flow queue, which favours large packets, so deficit round robin uses a byte quantum and fair queueing approximates bit-by-bit sharing."
+    },
+    {
+      "id": "multi-consistency",
+      "category": "multi_hop",
+      "question": "Is the consistency in ACID the same thing as consistency in a replicated database?",
+      "relevant": [{"course_code": "CS348", "page": 3}, {"course_code": "CS348", "page": 8}],
+      "reference_answer": "No. ACID consistency means a transaction preserves integrity constraints inside one database; replica consistency models (linearizability, eventual consistency, read-your-writes) describe which values reads may return when several copies exist."
+    },
+    {
+      "id": "multi-btree-vs-page-table",
+      "category": "multi_hop",
+      "question": "How are B+ tree indexes and multi-level page tables both tree-shaped lookups, and what does each map?",
+      "relevant": [{"course_code": "CS348", "page": 4}, {"course_code": "CS350", "page": 6}],
+      "reference_answer": "A B+ tree maps search keys to rows through a balanced, high fan-out tree of disk pages; a multi-level page table is a radix tree indexed by pieces of the virtual page number that maps pages to physical frames, with absent subtrees for unmapped memory."
+    },
+    {
+      "id": "multi-flow-vs-congestion",
+      "category": "multi_hop",
+      "question": "What is the difference between TCP flow control and TCP congestion control?",
+      "relevant": [{"course_code": "CS456", "page": 2}, {"course_code": "CS456", "page": 3}],
+      "reference_answer": "Flow control protects the receiver: the advertised receive window rwnd limits unacknowledged data. Congestion control protects the network: the congestion window cwnd adapts to loss via slow start and AIMD. The sender is limited by the smaller of the two."
+    },
+    {
+      "id": "multi-vanishing-gradient",
+      "category": "multi_hop",
+      "question": "Why do deep sigmoid networks learn slowly during backpropagation, and which activation function fixes this?",
+      "relevant": [{"course_code": "CS480", "page": 1}, {"course_code": "CS480", "page": 4}],
+      "reference_answer": "Backpropagation multiplies many local derivatives; the sigmoid's derivative is at most 0.25 and saturates, so gradients vanish exponentially with depth. ReLU has gradient 1 for positive inputs and does not saturate there."
+    },
+    {
+      "id": "multi-sigkill-zombie",
+      "category": "multi_hop",
+      "question": "If a child process is terminated with SIGKILL and its parent never calls wait(), what happens to the child?",
+      "relevant": [{"course_code": "CS350", "page": 1}, {"course_code": "CS350", "page": 2}],
+      "reference_answer": "SIGKILL terminates it immediately because it cannot be caught or ignored, but its process-table entry remains as a zombie until the parent calls wait(); if the parent exits, init adopts and reaps it."
+    },
+    {
+      "id": "multi-ttl",
+      "category": "multi_hop",
+      "question": "How is a time-to-live used differently in IP packets and in DNS caching?",
+      "relevant": [{"course_code": "CS456", "page": 4}, {"course_code": "CS456", "page": 5}],
+      "reference_answer": "The IP TTL is a hop count decremented by each router, and the packet is discarded at zero to stop routing loops; a DNS TTL is a lifetime in seconds for which resolvers may cache a record, which makes DNS eventually consistent."
+    },
+    {
+      "id": "oos-cricket",
+      "category": "out_of_scope",
       "question": "What are the rules of cricket?",
-      "ground_truth": "The course materials do not cover cricket; the assistant should say it cannot find an answer in the indexed documents rather than fabricating one.",
-      "course_code": null
+      "relevant": [],
+      "reference_answer": "Not covered by the course materials; the assistant should say it could not find an answer instead of guessing."
+    },
+    {
+      "id": "oos-world-cup",
+      "category": "out_of_scope",
+      "question": "Who won the 2018 FIFA World Cup?",
+      "relevant": [],
+      "reference_answer": "Not covered by the course materials; the assistant should decline."
+    },
+    {
+      "id": "oos-sourdough",
+      "category": "out_of_scope",
+      "question": "How do I bake a sourdough loaf?",
+      "relevant": [],
+      "reference_answer": "Not covered by the course materials; the assistant should decline."
+    },
+    {
+      "id": "oos-french-revolution",
+      "category": "out_of_scope",
+      "question": "What were the main causes of the French Revolution?",
+      "relevant": [],
+      "reference_answer": "Not covered by the course materials; the assistant should decline."
+    },
+    {
+      "id": "oos-photosynthesis",
+      "category": "out_of_scope",
+      "question": "How does photosynthesis turn sunlight into chemical energy?",
+      "relevant": [],
+      "reference_answer": "Not covered by the course materials; the assistant should decline."
+    },
+    {
+      "id": "oos-rust-borrow-checker",
+      "category": "out_of_scope",
+      "question": "How does the Rust borrow checker prevent data races?",
+      "relevant": [],
+      "reference_answer": "Near-domain but not covered (the notes discuss race conditions and locks, not Rust); the assistant should decline rather than answer from general knowledge."
+    },
+    {
+      "id": "oos-kubernetes-pod",
+      "category": "out_of_scope",
+      "question": "What is a Kubernetes pod?",
+      "relevant": [],
+      "reference_answer": "Near-domain but not covered by the course materials; the assistant should decline."
+    },
+    {
+      "id": "oos-rsa",
+      "category": "out_of_scope",
+      "question": "How does RSA public-key encryption work?",
+      "relevant": [],
+      "reference_answer": "Near-domain but not covered (TLS 1.3 is only mentioned, not explained); the assistant should decline."
     }
   ]
 }
