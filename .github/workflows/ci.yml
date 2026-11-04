@@ -19,6 +19,7 @@ env:
   TORCH_VERSION: "2.15.0"
   RUFF_VERSION: "0.17.3"
   MYPY_VERSION: "2.4.1"
+  TRIVY_VERSION: "0.70.0"
   FORCE_COLOR: "1"
 
 jobs:
@@ -332,17 +333,19 @@ jobs:
         run: |
           docker image inspect scholaria:ci -f '{{.Size}}' \
             | awk '{printf "Production image: %.0f MB (docker image inspect)\n", $1/1e6}' >> "$GITHUB_STEP_SUMMARY"
+      # Runs the pinned Trivy image directly. trivy-action/setup-trivy install Trivy via a
+      # script that downloads from get.trivy.dev, which does not resolve, so the action
+      # fails before scanning. Report only: a scanner outage must not fail the build.
       - name: Trivy scan (report only)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: image
-          image-ref: scholaria:ci
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          format: table
-          output: trivy.txt
-          exit-code: "0"
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" -w /work \
+            "aquasec/trivy:${TRIVY_VERSION}" image --no-progress \
+            --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+            --format table --output trivy.txt --exit-code 0 \
+            scholaria:ci
       - name: Publish scan
         if: ${{ !cancelled() }}
         run: |
