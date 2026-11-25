@@ -21,7 +21,7 @@
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 ARG NODE_IMAGE=node:22-alpine
 
-FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.10 AS uv
 
 # ---------- web: build the SPA ----------
 FROM ${NODE_IMAGE} AS web
